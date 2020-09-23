@@ -154,3 +154,4 @@ dmypy.json
 
 *.json
 .devcontainer/
+files/

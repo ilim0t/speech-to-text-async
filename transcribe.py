@@ -45,7 +45,8 @@ def transcribe_file(speech_file, key_path):
 
     audio = types.RecognitionAudio(content=content)
     config = types.RecognitionConfig(
-        language_code='en-US')
+        language_code='en-US',
+        enable_automatic_punctuation=True)
 
     # [START speech_python_migration_async_response]
     operation = client.long_running_recognize(config, audio)
@@ -79,7 +80,8 @@ def transcribe_gcs(gcs_uri, key_path):
 
     audio = types.RecognitionAudio(uri=gcs_uri)
     config = types.RecognitionConfig(
-        language_code='en-US')
+        language_code='en-US',
+        enable_automatic_punctuation=True)
 
     operation = client.long_running_recognize(config, audio)
 
