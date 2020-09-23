@@ -15,5 +15,5 @@ python3 transcribe.py [FILE] [CREDENTIALS_JSON]
 ## stereo to mono
 
 ```sh=
-sox ....wav -c 1 ....wav
+sox [STEREO_AUDIO] -c 1 [OUTPUT]
 ```
