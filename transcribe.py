@@ -23,77 +23,60 @@ Example usage:
 """
 
 import argparse
+import collections
 import io
+from typing import List, Tuple
+
+from google.cloud import speech_v1p1beta1 as speech
+from google.oauth2 import service_account
 
 
-# [START speech_transcribe_async]
-def transcribe_file(speech_file, key_path):
-    """Transcribe the given audio file asynchronously."""
-    from google.cloud import speech
-    from google.cloud.speech import enums
-    from google.cloud.speech import types
-    from google.oauth2 import service_account
-
-    credentials = service_account.Credentials.from_service_account_file(
-        key_path, scopes=["https://www.googleapis.com/auth/cloud-platform"],
-    )
-    client = speech.SpeechClient(credentials=credentials)
-
-    # [START speech_python_migration_async_request]
-    with io.open(speech_file, 'rb') as audio_file:
-        content = audio_file.read()
-
-    audio = types.RecognitionAudio(content=content)
-    config = types.RecognitionConfig(
-        language_code='en-US',
-        enable_automatic_punctuation=True)
-
-    # [START speech_python_migration_async_response]
-    operation = client.long_running_recognize(config, audio)
-    # [END speech_python_migration_async_request]
-
-    print('Waiting for operation to complete...')
-    response = operation.result()
-
-    # Each result is for a consecutive portion of the audio. Iterate through
-    # them to get the transcripts for the entire audio file.
-    for result in response.results:
-        # The first alternative is the most likely one for this portion.
-        print(result.alternatives[0].transcript)
-
-    # [END speech_python_migration_async_response]
-# [END speech_transcribe_async]
-
-
-# [START speech_transcribe_async_gcs]
 def transcribe_gcs(gcs_uri, key_path):
     """Asynchronously transcribes the audio file specified by the gcs_uri."""
-    from google.cloud import speech
-    from google.cloud.speech import enums
-    from google.cloud.speech import types
-    from google.oauth2 import service_account
-
     credentials = service_account.Credentials.from_service_account_file(
         key_path, scopes=["https://www.googleapis.com/auth/cloud-platform"],
     )
     client = speech.SpeechClient(credentials=credentials)
 
-    audio = types.RecognitionAudio(uri=gcs_uri)
-    config = types.RecognitionConfig(
+    audio = speech.types.RecognitionAudio(uri=gcs_uri)
+    config = speech.types.RecognitionConfig(
         language_code='en-US',
-        enable_automatic_punctuation=True)
+        enable_automatic_punctuation=True,
+        enable_speaker_diarization=True,
+        diarization_speaker_count=4)
 
     operation = client.long_running_recognize(config, audio)
 
     print('Waiting for operation to complete...')
     response = operation.result()
 
-    # Each result is for a consecutive portion of the audio. Iterate through
-    # them to get the transcripts for the entire audio file.
-    for result in response.results:
-        # The first alternative is the most likely one for this portion.
-        print(result.alternatives[0].transcript)
-# [END speech_transcribe_async_gcs]
+    # The transcript within each result is separate and sequential per result.
+    # However, the words list within an alternative includes all the words
+    # from all the results thus far. Thus, to get all the words with speaker
+    # tags, you only have to take the words list from the last result
+    result = response.results[-1]
+
+    words_info = result.alternatives[0].words
+
+    # Printing out the output:
+    for speaker, sentence in align_words(words_info):
+        print(f"User {speaker}: {sentence}")
+
+
+def align_words(words_info) -> List[Tuple[int, str]]:
+    sentences: List[Tuple[List[int], List[str]]] = []
+    sentence: Tuple[List[int], List[str]] = ([], [])
+
+    for word_info in words_info:
+        speaker_tag, word = sentence
+        speaker_tag.append(word_info.speaker_tag)
+        word.append(word_info.word)
+
+        if any(letter in word_info.word for letter in (".", "?")):
+            sentences.append(sentence)
+            sentence = ([], [])
+
+    return [(collections.Counter(speaker_tag).most_common()[0][0], " ".join(word)) for speaker_tag, word in sentences]
 
 
 if __name__ == '__main__':
@@ -103,9 +86,7 @@ if __name__ == '__main__':
     parser.add_argument(
         'path', help='File or GCS path for audio file to be recognized')
     parser.add_argument(
-        'key_path', help='Path of C\credentials')
+        'key_path', help='Path of Credentials')
     args = parser.parse_args()
-    if args.path.startswith('gs://'):
-        transcribe_gcs(args.path, args.key_path)
-    else:
-        transcribe_file(args.path, args.key_path)
+    assert args.path.startswith('gs://')
+    transcribe_gcs(args.path, args.key_path)
